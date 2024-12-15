@@ -158,10 +158,11 @@ impl App {
                 Axis::default()
                     .title("Transmitted")
                     .bounds([0.0, max_transmitted])
-                    .labels(vec![
-                        "0".gray(),
-                        (max_transmitted * 8f64).humanize_bps().gray(),
-                    ]),
+                    .labels(
+                        [0., 0.25, 0.5, 0.75, 1.]
+                            .iter()
+                            .map(|&v| (v * max_transmitted * 8.).humanize_bps().gray()),
+                    ),
             );
 
         frame.render_widget(chart, frame.area());
