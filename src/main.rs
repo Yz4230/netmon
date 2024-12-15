@@ -102,7 +102,8 @@ impl App {
                     let mut data = data.write().unwrap();
                     let ifdata = data.entry(name.clone()).or_insert_with(Vec::new);
                     let transmitted = network.transmitted() as f64;
-                    ifdata.push((elapsed, transmitted / interval.as_secs_f64()));
+                    let received = network.received() as f64;
+                    ifdata.push((elapsed, (transmitted + received) / interval.as_secs_f64()));
                 }
                 thread::sleep(interval);
             }
@@ -135,7 +136,7 @@ impl App {
             .max_by(|a, b| a.total_cmp(b))
             .unwrap_or(0.0);
 
-        let max_transmitted = data
+        let max_bandwidth = data
             .values()
             .map(|d| {
                 d.iter()
@@ -156,12 +157,12 @@ impl App {
             )
             .y_axis(
                 Axis::default()
-                    .title("Transmitted")
-                    .bounds([0.0, max_transmitted])
+                    .title("Bandwidth")
+                    .bounds([0.0, max_bandwidth])
                     .labels(
                         [0., 0.25, 0.5, 0.75, 1.]
                             .iter()
-                            .map(|&v| (v * max_transmitted * 8.).humanize_bps().gray()),
+                            .map(|&v| (v * max_bandwidth * 8.).humanize_bps().gray()),
                     ),
             );
 
