@@ -1,4 +1,5 @@
 use std::{
+    cmp,
     collections::HashMap,
     sync::{
         atomic::{self, AtomicBool},
@@ -14,7 +15,7 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode},
     style::{Color, Stylize},
     symbols::Marker,
-    text::Text,
+    text::Line,
     widgets::{Axis, Block, Chart, Dataset, GraphType},
     DefaultTerminal, Frame,
 };
@@ -38,6 +39,8 @@ struct App {
 
     collector: Option<thread::JoinHandle<()>>,
     collector_interval: Duration,
+
+    display_duration: Duration,
 }
 
 impl App {
@@ -48,7 +51,9 @@ impl App {
             data: Arc::new(RwLock::new(HashMap::new())),
 
             collector: None,
-            collector_interval: Duration::from_millis(100),
+            collector_interval: Duration::from_millis(250),
+
+            display_duration: Duration::from_secs(60),
         }
     }
 
@@ -56,7 +61,7 @@ impl App {
         self.running.store(true, atomic::Ordering::Relaxed);
         self.start_collector();
 
-        let tick_rate = Duration::from_millis(100);
+        let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
 
         loop {
@@ -65,11 +70,11 @@ impl App {
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
             if event::poll(timeout)? {
                 if let Event::Key(input) = event::read()? {
-                    if input.code == KeyCode::Char('q') {
-                        terminal.draw(|frame| {
-                            frame.render_widget(Text::from("👋 Quitting..."), frame.area())
-                        })?;
-                        break;
+                    match input.code {
+                        KeyCode::Char('q') => break,
+                        KeyCode::Up => self.display_duration *= 2,
+                        KeyCode::Down => self.display_duration /= 2,
+                        _ => {}
                     }
                 }
             }
@@ -136,10 +141,18 @@ impl App {
             .max_by(|a, b| a.total_cmp(b))
             .unwrap_or(0.0);
 
+        let domain = {
+            let duration = self.display_duration.as_secs_f64();
+            let start = cmp::max_by(0.0, last_ts - duration, |a, b| a.total_cmp(b));
+            let end = cmp::max_by(duration, last_ts, |a, b| a.total_cmp(b));
+            [start, end]
+        };
+
         let max_bandwidth = data
             .values()
             .map(|d| {
                 d.iter()
+                    .skip_while(|(t, _)| *t < domain[0])
                     .map(|(_, t)| *t)
                     .max_by(|a, b| a.total_cmp(b))
                     .unwrap_or(0.0)
@@ -148,22 +161,26 @@ impl App {
             .unwrap_or(0.0);
 
         let chart = Chart::new(datasets)
-            .block(Block::bordered())
+            .block(
+                Block::bordered().title(
+                    Line::from(format!(
+                        "Network Bandwidth (duration={:?})",
+                        self.display_duration,
+                    ))
+                    .centered(),
+                ),
+            )
             .x_axis(
                 Axis::default()
-                    .title("Time")
-                    .bounds([0.0, last_ts])
-                    .labels(vec!["0".gray(), format!("{:.1}s", last_ts).gray()]),
+                    .bounds(domain)
+                    .labels(domain.iter().map(|&v| format!("{:.1}s", v))),
             )
             .y_axis(
-                Axis::default()
-                    .title("Bandwidth")
-                    .bounds([0.0, max_bandwidth])
-                    .labels(
-                        [0., 0.25, 0.5, 0.75, 1.]
-                            .iter()
-                            .map(|&v| (v * max_bandwidth * 8.).humanize_bps().gray()),
-                    ),
+                Axis::default().bounds([0.0, max_bandwidth]).labels(
+                    [0., 0.25, 0.5, 0.75, 1.]
+                        .iter()
+                        .map(|&v| (v * max_bandwidth * 8.).humanize_bps()),
+                ),
             );
 
         frame.render_widget(chart, frame.area());
