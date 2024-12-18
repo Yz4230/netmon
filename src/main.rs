@@ -118,8 +118,15 @@ impl App {
     fn draw(&self, frame: &mut Frame) -> Result<()> {
         let data = self.data.read().unwrap();
 
-        let datasets = data
+        let ifnames = {
+            let mut ifnames = data.keys().collect::<Vec<_>>();
+            ifnames.sort();
+            ifnames
+        };
+
+        let datasets = ifnames
             .iter()
+            .filter_map(|name| data.get(*name).map(|data| (*name, data)))
             .map(|(name, data)| {
                 let mut hasher = Blake2b::<U3>::new();
                 hasher.update(name.as_bytes());
