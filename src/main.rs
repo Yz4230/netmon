@@ -1,5 +1,4 @@
 use std::{
-    cmp,
     collections::HashMap,
     sync::{
         atomic::{self, AtomicBool},
@@ -150,9 +149,7 @@ impl App {
 
         let domain = {
             let duration = self.display_duration.as_secs_f64();
-            let start = cmp::max_by(0.0, last_ts - duration, |a, b| a.total_cmp(b));
-            let end = cmp::max_by(duration, last_ts, |a, b| a.total_cmp(b));
-            [start, end]
+            [last_ts - duration, last_ts]
         };
 
         let max_bandwidth = data
@@ -180,7 +177,13 @@ impl App {
             .x_axis(
                 Axis::default()
                     .bounds(domain)
-                    .labels(domain.iter().map(|&v| format!("{:.1}s", v))),
+                    .labels(domain.iter().map(|&v| {
+                        if v < 0. {
+                            "0s".to_string()
+                        } else {
+                            format!("{:.1}s", v)
+                        }
+                    })),
             )
             .y_axis(
                 Axis::default().bounds([0.0, max_bandwidth]).labels(
